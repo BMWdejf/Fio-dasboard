@@ -1,8 +1,5 @@
-// This is your Prisma schema file,
+// FIO Dashboard - Prisma schema pro sledování plateb
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
   provider = "prisma-client-js"
@@ -12,4 +9,126 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_NEON_URL")
+}
+
+// Uživatelé (zaměstnanci banky)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      UserRole @default(EMPLOYEE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relace
+  reviewedPayments Payment[] @relation("ReviewedBy")
+  sessions         Session[]
+
+  @@map("users")
+}
+
+// Better Auth session model
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relace
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Zákazníci
+model Customer {
+  id          String   @id @default(cuid())
+  email       String?  @unique
+  name        String
+  phone       String?
+  address     String?
+  companyName String?
+  ico         String?  @unique // IČO pro firmy
+  dic         String?  // DIČ pro firmy
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relace
+  payments Payment[]
+  qrCodes  QrCode[]
+
+  @@map("customers")
+}
+
+// QR kódy pro platby
+model QrCode {
+  id          String    @id @default(cuid())
+  code        String    @unique // Unikátní kód QR
+  amount      Decimal   @db.Decimal(10, 2)
+  currency    String    @default("CZK")
+  description String?
+  validUntil  DateTime?
+  isActive    Boolean   @default(true)
+  customerId  String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relace
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("qr_codes")
+}
+
+// Platby
+model Payment {
+  id                String        @id @default(cuid())
+  amount            Decimal       @db.Decimal(10, 2)
+  currency          String        @default("CZK")
+  description       String?
+  variableSymbol    String?
+  constantSymbol    String?
+  specificSymbol    String?
+  bankTransactionId String?       @unique // ID transakce z banky
+  accountFrom       String? // Účet odesílatele
+  accountTo         String? // Cílový účet
+  status            PaymentStatus @default(PENDING)
+  reviewStatus      ReviewStatus  @default(PENDING)
+  reviewNote        String?
+  paidAt            DateTime?
+  reviewedAt        DateTime?
+  customerId        String?
+  qrCodeId          String?
+  reviewedById      String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relace
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  qrCode     QrCode?   @relation(fields: [qrCodeId], references: [id])
+  reviewedBy User?     @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  @@map("payments")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum PaymentStatus {
+  PENDING    // Čeká na zpracování
+  COMPLETED  // Dokončeno
+  FAILED     // Neúspěšné
+  CANCELLED  // Zrušeno
+}
+
+enum ReviewStatus {
+  PENDING   // Čeká na review
+  APPROVED  // Schváleno
+  REJECTED  // Zamítnuto
+  NEEDS_INFO // Potřebuje doplnění informací
 }
